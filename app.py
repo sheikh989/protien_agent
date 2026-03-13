@@ -18,6 +18,21 @@ import plotly.express as px
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # ───────────────────────────────────────────────────────────────────────
+# JAX compatibility patch for ColabDesign (older versions expect
+# jax.lib.xla_bridge which was removed in newer JAX releases)
+# ───────────────────────────────────────────────────────────────────────
+try:
+    import jax
+    if not hasattr(jax, 'lib') or not hasattr(jax.lib, 'xla_bridge'):
+        import types
+        import jax._src.xla_bridge as _xb
+        if not hasattr(jax, 'lib'):
+            jax.lib = types.ModuleType('jax.lib')
+        jax.lib.xla_bridge = _xb
+except Exception:
+    pass
+
+# ───────────────────────────────────────────────────────────────────────
 # Page config & custom CSS
 # ───────────────────────────────────────────────────────────────────────
 st.set_page_config(

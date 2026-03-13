@@ -8,6 +8,8 @@ import os
 import re
 import warnings
 import tempfile
+import subprocess
+import tarfile
 import streamlit as st
 import numpy as np
 import requests
@@ -237,9 +239,51 @@ def fetch_pdb(pdb_code: str) -> str:
     return out_path
 
 
-def ensure_params():
-    """Check if AlphaFold parameters are downloaded."""
-    return os.path.isdir(PARAMS_DIR)
+def download_params(status_container):
+    """Download and extract AlphaFold parameters if not present."""
+    if os.path.isdir(PARAMS_DIR) and len(os.listdir(PARAMS_DIR)) > 0:
+        return True
+
+    PARAMS_URL = "https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar"
+    TAR_FILE = "alphafold_params_2022-12-06.tar"
+
+    try:
+        os.makedirs(PARAMS_DIR, exist_ok=True)
+
+        # Download with progress
+        status_container.write("📦 Downloading AlphaFold parameters (~3.5 GB)... This only happens once.")
+        progress_bar = status_container.progress(0, text="Downloading...")
+
+        resp = requests.get(PARAMS_URL, stream=True, timeout=600)
+        resp.raise_for_status()
+        total = int(resp.headers.get('content-length', 0))
+        downloaded = 0
+
+        with open(TAR_FILE, 'wb') as f:
+            for chunk in resp.iter_content(chunk_size=8 * 1024 * 1024):  # 8MB chunks
+                f.write(chunk)
+                downloaded += len(chunk)
+                if total > 0:
+                    pct = min(downloaded / total, 1.0)
+                    progress_bar.progress(pct, text=f"Downloaded {downloaded / 1e9:.1f} / {total / 1e9:.1f} GB")
+
+        progress_bar.progress(1.0, text="Download complete!")
+
+        # Extract
+        status_container.write("📂 Extracting parameters...")
+        with tarfile.open(TAR_FILE, 'r') as tar:
+            tar.extractall(path=PARAMS_DIR)
+
+        # Cleanup tar
+        if os.path.isfile(TAR_FILE):
+            os.remove(TAR_FILE)
+
+        status_container.write("✅ AlphaFold parameters ready!")
+        return True
+
+    except Exception as e:
+        status_container.error(f"Failed to download AlphaFold parameters: {e}")
+        return False
 
 
 # ───────────────────────────────────────────────────────────────────────
@@ -399,18 +443,9 @@ if run_clicked:
             else:
                 pdb_path = fetch_pdb(pdb_code)
 
-            # ── 2. Check params ──────────────────────────────────────
-            if not ensure_params():
-                st.warning(
-                    "⚠️ AlphaFold parameters not found in `./params/`. "
-                    "Please download them first:\n\n"
-                    "```bash\n"
-                    "mkdir params\n"
-                    "wget https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar\n"
-                    "tar -xf alphafold_params_2022-12-06.tar -C params\n"
-                    "```"
-                )
-                status.update(label="❌ Missing AlphaFold params", state="error")
+            # ── 2. Download params if needed ─────────────────────────
+            if not download_params(st):
+                status.update(label="❌ Failed to download AlphaFold params", state="error")
                 st.stop()
 
             # ── 3. Build model ───────────────────────────────────────

@@ -4,5 +4,3 @@ numpy
 scipy
 plotly
 requests
-jax<0.5
-jaxlib<0.5

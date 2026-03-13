@@ -1,0 +1,6 @@
+streamlit>=1.30.0
+colabdesign>=1.1.1
+numpy
+scipy
+plotly
+requests

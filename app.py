@@ -18,17 +18,53 @@ import plotly.express as px
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # ───────────────────────────────────────────────────────────────────────
-# JAX compatibility patch for ColabDesign (older versions expect
-# jax.lib.xla_bridge which was removed in newer JAX releases)
+# JAX compatibility shim for ColabDesign 1.1.1
+# ColabDesign uses deprecated JAX top-level APIs that were removed in
+# newer JAX (0.5+). This patch restores them so everything works on
+# Python 3.14 / JAX 0.9+.
 # ───────────────────────────────────────────────────────────────────────
 try:
     import jax
+    import jax.tree_util
+    import types
+
+    # Restore jax.tree_* top-level convenience functions
+    _tree_fns = [
+        'tree_map', 'tree_leaves', 'tree_flatten', 'tree_unflatten',
+        'tree_structure', 'tree_transpose', 'tree_multimap',
+    ]
+    for fn_name in _tree_fns:
+        if not hasattr(jax, fn_name) and hasattr(jax.tree_util, fn_name):
+            setattr(jax, fn_name, getattr(jax.tree_util, fn_name))
+
+    # tree_multimap was an alias for tree_map in older JAX
+    if not hasattr(jax, 'tree_multimap'):
+        jax.tree_multimap = jax.tree_util.tree_map
+
+    # Restore jax.lib.xla_bridge
     if not hasattr(jax, 'lib') or not hasattr(jax.lib, 'xla_bridge'):
-        import types
-        import jax._src.xla_bridge as _xb
-        if not hasattr(jax, 'lib'):
-            jax.lib = types.ModuleType('jax.lib')
-        jax.lib.xla_bridge = _xb
+        try:
+            import jax._src.xla_bridge as _xb
+            if not hasattr(jax, 'lib'):
+                jax.lib = types.ModuleType('jax.lib')
+            jax.lib.xla_bridge = _xb
+        except ImportError:
+            pass
+
+    # Restore jax.lib.xla_client if missing
+    if not hasattr(jax, 'lib') or not hasattr(jax.lib, 'xla_client'):
+        try:
+            import jaxlib.xla_client as _xc
+            if not hasattr(jax, 'lib'):
+                jax.lib = types.ModuleType('jax.lib')
+            jax.lib.xla_client = _xc
+        except ImportError:
+            pass
+
+    # Restore jax.random.KeyArray if missing (used by some haiku versions)
+    if not hasattr(jax.random, 'KeyArray'):
+        jax.random.KeyArray = type(jax.random.PRNGKey(0))
+
 except Exception:
     pass
 

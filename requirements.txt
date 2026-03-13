@@ -4,3 +4,7 @@ numpy
 scipy
 plotly
 requests
+jax==0.4.20
+jaxlib==0.4.20
+dm-haiku==0.0.12
+chex==0.1.86
